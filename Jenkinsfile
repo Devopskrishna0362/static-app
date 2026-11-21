@@ -2,6 +2,11 @@
 pipeline {
     agent any
 
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+    }
+
     environment {
         APP_NAME = 'devops-static-app'
         K8S_NAMESPACE = 'demo'
@@ -13,7 +18,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                echo 'Checking out source code from GitHub'
+                echo 'Checking out source code'
                 checkout scm
             }
         }
@@ -21,8 +26,13 @@ pipeline {
         stage('Validate Tools') {
             steps {
                 sh '''
+                    echo "Checking Docker"
                     docker --version
+
+                    echo "Checking Kubernetes"
                     kubectl version --client
+
+                    echo "Checking Kubernetes context"
                     kubectl config current-context
                 '''
             }
@@ -36,7 +46,15 @@ pipeline {
 
                 sh '''
                     docker build \
-                    -t ${APP_NAME}:${IMAGE_TAG} .
+                      -t ${APP_NAME}:${IMAGE_TAG} .
+                '''
+            }
+        }
+
+        stage('Verify Docker Image') {
+            steps {
+                sh '''
+                    docker images | grep ${APP_NAME}
                 '''
             }
         }
@@ -47,9 +65,9 @@ pipeline {
                     kubectl apply -f k8s/ -n ${K8S_NAMESPACE}
 
                     kubectl set image \
-                    deployment/${DEPLOYMENT_NAME} \
-                    ${CONTAINER_NAME}=${APP_NAME}:${IMAGE_TAG} \
-                    -n ${K8S_NAMESPACE}
+                      deployment/${DEPLOYMENT_NAME} \
+                      ${CONTAINER_NAME}=${APP_NAME}:${IMAGE_TAG} \
+                      -n ${K8S_NAMESPACE}
                 '''
             }
         }
@@ -58,13 +76,13 @@ pipeline {
             steps {
                 sh '''
                     kubectl rollout status \
-                    deployment/${DEPLOYMENT_NAME} \
-                    -n ${K8S_NAMESPACE} \
-                    --timeout=180s
+                      deployment/${DEPLOYMENT_NAME} \
+                      -n ${K8S_NAMESPACE} \
+                      --timeout=180s
 
                     kubectl get pods -n ${K8S_NAMESPACE} -o wide
 
-                    kubectl get svc -n ${K8S_NAMESPACE}
+                    kubectl get services -n ${K8S_NAMESPACE}
                 '''
             }
         }
@@ -73,11 +91,15 @@ pipeline {
     post {
         success {
             echo 'Application deployed successfully!'
-            echo 'Access: http://localhost:30080'
+            echo 'Application URL: http://localhost:30080'
         }
 
         failure {
-            echo 'Pipeline failed. Check Jenkins console output.'
+            echo 'Pipeline failed. Check Jenkins Console Output.'
+        }
+
+        always {
+            echo 'CI/CD Pipeline execution completed.'
         }
     }
 }
